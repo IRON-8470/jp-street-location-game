@@ -1,4 +1,4 @@
-name = "machikado-tokutei"
+name = "jp-street-location-game"
 main = "src/index.js"
 compatibility_date = "2026-10-22"
 
@@ -9,5 +9,5 @@ run_worker_first = ["/api/*"]
 
 [[d1_databases]]
 binding = "DB"
-database_name = "machikado-tokutei-db"
-database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+database_name = "jp-street-location-game"
+database_id = "5c641fda-d33f-40ec-9914-51852b02cb08"
