@@ -1,0 +1,2 @@
+# ローカル開発用。実際のトークンを記入したファイルはGitにコミットしないでください。
+MAPILLARY_ACCESS_TOKEN=REPLACE_WITH_YOUR_MAPILLARY_CLIENT_TOKEN
