@@ -159,10 +159,12 @@
       const image = el("street-photo");
       image.onload = () => {
         if (state.questionId !== data.questionId) return;
+
         state.imageLoaded = true;
         image.hidden = false;
         el("photo-placeholder").hidden = true;
         el("photo-loading").hidden = true;
+        el("question-status").textContent = "回答待ち";
       };
       image.onerror = () => {
         if (state.questionId !== data.questionId) return;
