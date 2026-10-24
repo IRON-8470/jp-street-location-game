@@ -14,7 +14,9 @@
     resultLine: null,
     stats: { answered: 0, correct: 0, skipped: 0 },
     questionNumber: 0,
-    result: null
+    result: null,
+    prefetchPromise: null,
+    prefetchedQuestion: null
   };
 
   const answerMap = L.map("answer-map", { zoomControl: true, scrollWheelZoom: true }).setView([36.3, 138.0], 5);
@@ -144,11 +146,77 @@
     answerMap.setView([36.3, 138.0], 5);
   }
 
+  function preloadImage(url) {
+    return new Promise((resolve) => {
+      const image = new Image();
+      let settled = false;
+      const finish = (loaded) => {
+        if (settled) return;
+        settled = true;
+        resolve({ image, loaded });
+      };
+      image.decoding = "async";
+      image.loading = "eager";
+      image.fetchPriority = "low";
+      image.onload = () => finish(true);
+      image.onerror = () => finish(false);
+      image.src = url;
+      if (image.complete) finish(image.naturalWidth > 0);
+    });
+  }
+
+  function startPrefetchNextQuestion() {
+    if (state.phase !== "active" || state.prefetchPromise || state.prefetchedQuestion) return;
+
+    const promise = (async () => {
+      // プレイ中に次の問題を取得し、写真もバックグラウンドで先読みする。
+      const data = await api("/api/question");
+      const preload = await preloadImage(data.imageUrl);
+      return { data, preload };
+    })();
+
+    state.prefetchPromise = promise;
+    promise.then((prepared) => {
+      if (state.prefetchPromise === promise) state.prefetchedQuestion = prepared;
+    }).catch(() => {
+      // 次の問題へ進む操作時に通常の取得処理へフォールバックする。
+    });
+  }
+
+  async function obtainQuestion() {
+    if (state.prefetchedQuestion) {
+      const prepared = state.prefetchedQuestion;
+      state.prefetchedQuestion = null;
+      state.prefetchPromise = null;
+      return prepared;
+    }
+
+    if (state.prefetchPromise) {
+      const pending = state.prefetchPromise;
+      try {
+        const prepared = await pending;
+        if (state.prefetchPromise === pending) {
+          state.prefetchedQuestion = null;
+          state.prefetchPromise = null;
+        }
+        return prepared;
+      } catch {
+        if (state.prefetchPromise === pending) state.prefetchPromise = null;
+      }
+    }
+
+    // 先読みが失敗した場合も、これまでどおり通常取得で続行する。
+    const data = await api("/api/question");
+    return { data, preload: null };
+  }
+
   async function loadQuestion() {
     resetForNextQuestion();
     el("photo-loading").hidden = false;
+    el("next-button").disabled = true;
     try {
-      const data = await api("/api/question");
+      const prepared = await obtainQuestion();
+      const data = prepared.data;
       state.questionId = data.questionId;
       state.questionNumber += 1;
       state.phase = "active";
@@ -156,15 +224,29 @@
       el("question-status").textContent = "調査中";
       el("skip-button").disabled = false;
 
-      const image = el("street-photo");
+      const existingImage = el("street-photo");
+      // 先読み済み画像がある場合は、そのImageオブジェクトをDOMへ移し、二重取得を避ける。
+      const reusePreloadedImage = Boolean(prepared.preload && prepared.preload.loaded && prepared.preload.image);
+      const image = reusePreloadedImage ? prepared.preload.image : existingImage;
+      if (reusePreloadedImage) {
+        image.id = "street-photo";
+        image.alt = "日本の街角の出題写真";
+        image.hidden = true;
+        existingImage.replaceWith(image);
+      } else {
+        image.fetchPriority = "high";
+        image.decoding = "async";
+      }
       image.onload = () => {
         if (state.questionId !== data.questionId) return;
-
         state.imageLoaded = true;
         image.hidden = false;
         el("photo-placeholder").hidden = true;
         el("photo-loading").hidden = true;
-        el("question-status").textContent = "回答待ち";
+        if (state.phase === "active") {
+          el("question-status").textContent = "回答待ち";
+          startPrefetchNextQuestion();
+        }
       };
       image.onerror = () => {
         if (state.questionId !== data.questionId) return;
@@ -174,7 +256,9 @@
         el("photo-placeholder").querySelector("span").textContent = "この問題はスキップして、次の写真へ進んでください。";
         setNotice("画像の読み込みに失敗しました。スキップして次の問題へ進めます。", "error");
       };
-      image.src = data.imageUrl;
+      if (!reusePreloadedImage) image.src = data.imageUrl;
+      // 先読み済み／キャッシュ済み画像ではonloadが既に発火している可能性がある。
+      if (image.complete && image.naturalWidth > 0) image.onload();
       setNotice("");
     } catch (error) {
       state.phase = "error";
@@ -195,6 +279,8 @@
       el("result-badge").className = "result-badge incorrect";
       el("credit-text").textContent = "問題を取得できていないため、出典情報はありません。";
       el("source-link").hidden = true;
+    } finally {
+      el("next-button").disabled = false;
     }
   }
 

@@ -49,7 +49,8 @@ function getCoordinates(image) {
 
 function normalizeImage(image) {
   const coords = getCoordinates(image);
-  const imageUrl = image.thumb_2048_url || image.thumb_1024_url;
+  // 体感速度を優先して1024px版を使い、利用できない場合だけ2048px版へフォールバック。
+  const imageUrl = image.thumb_1024_url || image.thumb_2048_url;
   if (!coords || !image.id || !imageUrl) return null;
   let parsed;
   try { parsed = new URL(imageUrl); } catch { return null; }
@@ -97,13 +98,22 @@ async function fetchImagesInArea(env, lat, lon) {
 }
 
 async function getUsedImageIds(env, candidateIds) {
-  if (!candidateIds.length) return new Set();
-  const ids = [...new Set(candidateIds)].slice(0, 90);
-  const marks = ids.map(() => "?").join(",");
-  const result = await env.DB.prepare(
-    `SELECT image_id FROM game_questions WHERE created_at > ? AND image_id IN (${marks})`
-  ).bind(Math.floor(Date.now() / 1000) - 30 * 86400, ...ids).all();
-  return new Set((result.results || []).map((row) => String(row.image_id)));
+  const ids = [...new Set(candidateIds)];
+  if (!ids.length) return new Set();
+
+  // 候補数が多い場合も、過去30日以内の画像をすべて照合する。
+  const batches = [];
+  for (let index = 0; index < ids.length; index += 90) {
+    batches.push(ids.slice(index, index + 90));
+  }
+  const results = await Promise.all(batches.map(async (batch) => {
+    const marks = batch.map(() => "?").join(",");
+    const result = await env.DB.prepare(
+      `SELECT image_id FROM game_questions WHERE created_at > ? AND image_id IN (${marks})`
+    ).bind(Math.floor(Date.now() / 1000) - 30 * 86400, ...batch).all();
+    return (result.results || []).map((row) => String(row.image_id));
+  }));
+  return new Set(results.flat());
 }
 
 function attributionFor(row) {
@@ -130,18 +140,37 @@ async function handleQuestion(env) {
     await env.DB.prepare("DELETE FROM game_questions WHERE created_at < ?").bind(Math.floor(Date.now() / 1000) - 30 * 86400).run();
     let chosen = null;
     let lastError = null;
-    for (let attempt = 0; attempt < 9 && !chosen; attempt++) {
-      const [lat, lon] = JAPAN_AREAS[Math.floor(Math.random() * JAPAN_AREAS.length)];
-      let images;
-      try {
-        images = await fetchImagesInArea(env, lat, lon);
-      } catch (error) {
-        lastError = error;
-        continue;
+
+    // 複数の地域を並行して検索し、APIの待ち時間を短縮する。
+    // 空振りが続いた場合のみ、最大3バッチ（合計9検索）まで再試行する。
+    for (let batchNumber = 0; batchNumber < 3 && !chosen; batchNumber++) {
+      const selectedAreas = [];
+      const usedIndexes = new Set();
+      while (selectedAreas.length < 3 && usedIndexes.size < JAPAN_AREAS.length) {
+        const index = Math.floor(Math.random() * JAPAN_AREAS.length);
+        if (usedIndexes.has(index)) continue;
+        usedIndexes.add(index);
+        selectedAreas.push(JAPAN_AREAS[index]);
       }
-      if (!images.length) continue;
-      const used = await getUsedImageIds(env, images.map((image) => image.imageId));
-      const available = images.filter((image) => !used.has(image.imageId));
+
+      const outcomes = await Promise.all(selectedAreas.map(async ([lat, lon]) => {
+        try {
+          return { images: await fetchImagesInArea(env, lat, lon), error: null };
+        } catch (error) {
+          return { images: [], error };
+        }
+      }));
+      for (const outcome of outcomes) {
+        if (outcome.error) lastError = outcome.error;
+      }
+
+      const uniqueImages = [...new Map(
+        outcomes.flatMap((outcome) => outcome.images).map((image) => [image.imageId, image])
+      ).values()];
+      if (!uniqueImages.length) continue;
+
+      const used = await getUsedImageIds(env, uniqueImages.map((image) => image.imageId));
+      const available = uniqueImages.filter((image) => !used.has(image.imageId));
       if (available.length) chosen = available[Math.floor(Math.random() * available.length)];
     }
     if (!chosen) {
