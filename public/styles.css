@@ -159,18 +159,25 @@ h1 { margin: 0; font-size: clamp(25px, 3vw, 36px); letter-spacing: -.035em; line
   .map-hint { max-width: 125px; text-align: right; }
 }
 
-
 /* Photo zoom viewer */
 .photo-actions { flex-wrap: wrap; }
-.photo-zoom-dialog[hidden] { display: none !important; }
-.photo-zoom-dialog { position: fixed; inset: 0; z-index: 3000; display: flex; flex-direction: column; background: rgba(5, 13, 22, .97); color: #fff; }
-.photo-zoom-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 16px; background: #102a43; border-bottom: 1px solid rgba(255,255,255,.18); }
-.photo-zoom-toolbar > span { display: flex; flex-direction: column; gap: 4px; font-weight: 700; }
-.photo-zoom-toolbar small { color: #c6d6e4; font-size: 12px; font-weight: 400; }
-.photo-zoom-controls { display: flex; align-items: center; gap: 8px; }
-.photo-zoom-controls button { min-height: 38px; padding: 7px 12px; border: 1px solid #7892a8; border-radius: 8px; color: #fff; background: #24445e; cursor: pointer; font: inherit; }
-.photo-zoom-controls button:hover { background: #315b7a; }
-.photo-zoom-viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; cursor: grab; touch-action: none; user-select: none; }
-.photo-zoom-viewport.dragging { cursor: grabbing; }
-.photo-zoom-viewport img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; transform-origin: center center; pointer-events: none; will-change: transform; }
-@media (max-width: 600px) { .photo-zoom-toolbar { align-items: flex-start; flex-direction: column; padding: 10px; } .photo-zoom-controls { width: 100%; flex-wrap: wrap; } .photo-zoom-controls button { flex: 1; } .photo-zoom-toolbar small { font-size: 11px; } }
+.photo-zoom-modal[hidden] { display: none !important; }
+.photo-zoom-modal { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 18px; background: rgba(7, 18, 31, .88); }
+.photo-zoom-dialog { width: min(1200px, 100%); height: min(900px, 94vh); display: flex; flex-direction: column; overflow: hidden; border-radius: 14px; background: #101d2b; color: #f7fafc; box-shadow: 0 20px 70px rgba(0,0,0,.45); }
+.photo-zoom-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; background: #172a3c; }
+.photo-zoom-title { font-weight: 700; }
+.photo-zoom-controls { display: flex; align-items: center; gap: 7px; }
+.photo-zoom-controls button { min-width: 38px; min-height: 36px; padding: 6px 10px; border: 1px solid #53687b; border-radius: 7px; background: #243b50; color: #fff; cursor: pointer; font: inherit; }
+.photo-zoom-controls button:hover { background: #34536d; }
+.photo-zoom-viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; display: grid; place-items: center; background: #050b11; touch-action: none; cursor: grab; outline: none; }
+.photo-zoom-viewport:active { cursor: grabbing; }
+.photo-zoom-viewport img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; user-select: none; -webkit-user-drag: none; transform-origin: center center; will-change: transform; pointer-events: none; }
+.photo-zoom-help { margin: 0; padding: 8px 12px; color: #cbd5e1; font-size: 12px; text-align: center; }
+@media (max-width: 600px) {
+  .photo-zoom-modal { padding: 0; }
+  .photo-zoom-dialog { width: 100%; height: 100dvh; border-radius: 0; }
+  .photo-zoom-toolbar { align-items: flex-start; flex-direction: column; }
+  .photo-zoom-controls { width: 100%; }
+  .photo-zoom-controls button { flex: 1; }
+}
+body.photo-zoom-open { overflow: hidden; }

@@ -4,6 +4,7 @@
   const el = (id) => document.getElementById(id);
   const state = {
     questionId: null,
+    zoomImageUrl: null,
     imageLoaded: false,
     phase: "idle",
     answer: null,
@@ -119,6 +120,7 @@
 
   function resetForNextQuestion() {
     state.questionId = null;
+    state.zoomImageUrl = null;
     state.imageLoaded = false;
     state.phase = "loading";
     state.answer = null;
@@ -127,7 +129,7 @@
     state.answerMarker = null;
     el("street-photo").hidden = true;
     el("street-photo").removeAttribute("src");
-    el("zoom-photo-button").disabled = true;
+    el("photo-zoom-open").disabled = true;
     el("photo-placeholder").hidden = false;
     el("photo-loading").hidden = true;
     el("question-status").textContent = "写真を取得中";
@@ -219,6 +221,7 @@
       const prepared = await obtainQuestion();
       const data = prepared.data;
       state.questionId = data.questionId;
+      state.zoomImageUrl = data.zoomImageUrl || data.imageUrl;
       state.questionNumber += 1;
       state.phase = "active";
       el("question-title").textContent = `街角の写真 #${String(state.questionNumber).padStart(3, "0")}`;
@@ -241,7 +244,7 @@
       image.onload = () => {
         if (state.questionId !== data.questionId) return;
         state.imageLoaded = true;
-        el("zoom-photo-button").disabled = false;
+        el("photo-zoom-open").disabled = false;
         image.hidden = false;
         el("photo-placeholder").hidden = true;
         el("photo-loading").hidden = true;
@@ -253,7 +256,7 @@
       image.onerror = () => {
         if (state.questionId !== data.questionId) return;
         el("photo-loading").hidden = true;
-        el("zoom-photo-button").disabled = true;
+        el("photo-zoom-open").disabled = true;
         el("photo-placeholder").hidden = false;
         el("photo-placeholder").querySelector("strong").textContent = "写真を読み込めませんでした";
         el("photo-placeholder").querySelector("span").textContent = "この問題はスキップして、次の写真へ進んでください。";
@@ -426,103 +429,137 @@
     return `${(meters / 1000).toFixed(2)} km`;
   }
 
-  // 拡大表示：ホイール／ピンチ操作、ドラッグ、ボタン操作に対応。
-  const zoomState = { scale: 1, x: 0, y: 0, pointers: new Map(), pinchStart: null, dragStart: null };
+  // 写真拡大ビューアー。ホイール／ピンチで拡大縮小し、ドラッグで移動する。
+  const zoomViewer = {
+    scale: 1,
+    minScale: 1,
+    maxScale: 8,
+    x: 0,
+    y: 0,
+    pointers: new Map(),
+    dragStart: null,
+    pinchStart: null
+  };
 
-  function renderZoomTransform() {
-    el("photo-zoom-image").style.transform = `translate(${zoomState.x}px, ${zoomState.y}px) scale(${zoomState.scale})`;
+  function applyZoomTransform() {
+    el("photo-zoom-image").style.transform = `translate(${zoomViewer.x}px, ${zoomViewer.y}px) scale(${zoomViewer.scale})`;
+    el("photo-zoom-out").disabled = zoomViewer.scale <= zoomViewer.minScale;
+    el("photo-zoom-in").disabled = zoomViewer.scale >= zoomViewer.maxScale;
   }
 
-  function resetPhotoZoom() {
-    zoomState.scale = 1;
-    zoomState.x = 0;
-    zoomState.y = 0;
-    renderZoomTransform();
+  function setZoomScale(nextScale, anchorX = null, anchorY = null) {
+    const oldScale = zoomViewer.scale;
+    const newScale = Math.max(zoomViewer.minScale, Math.min(zoomViewer.maxScale, nextScale));
+    if (anchorX !== null && anchorY !== null && oldScale !== newScale) {
+      const rect = el("photo-zoom-viewport").getBoundingClientRect();
+      const cx = anchorX - (rect.left + rect.width / 2);
+      const cy = anchorY - (rect.top + rect.height / 2);
+      zoomViewer.x = cx - (cx - zoomViewer.x) * (newScale / oldScale);
+      zoomViewer.y = cy - (cy - zoomViewer.y) * (newScale / oldScale);
+    }
+    zoomViewer.scale = newScale;
+    applyZoomTransform();
   }
 
-  function changePhotoZoom(delta) {
-    zoomState.scale = Math.max(1, Math.min(8, zoomState.scale * delta));
-    if (zoomState.scale === 1) { zoomState.x = 0; zoomState.y = 0; }
-    renderZoomTransform();
+  function resetZoom() {
+    zoomViewer.scale = 1;
+    zoomViewer.x = 0;
+    zoomViewer.y = 0;
+    zoomViewer.pointers.clear();
+    zoomViewer.dragStart = null;
+    zoomViewer.pinchStart = null;
+    applyZoomTransform();
   }
 
   function openPhotoZoom() {
     const source = el("street-photo");
-    if (!state.imageLoaded || !source.currentSrc && !source.src) return;
-    const dialog = el("photo-zoom-dialog");
-    el("photo-zoom-image").src = source.currentSrc || source.src;
-    dialog.hidden = false;
-    resetPhotoZoom();
+    if (!state.imageLoaded || !source.src) return;
+    const questionAtOpen = state.questionId;
+    const zoomImage = el("photo-zoom-image");
+    zoomImage.src = source.currentSrc || source.src;
+    el("photo-zoom-modal").hidden = false;
+    document.body.classList.add("photo-zoom-open");
+    resetZoom();
     el("photo-zoom-viewport").focus();
-    document.body.style.overflow = "hidden";
+    el("photo-zoom-close").focus();
+    // 通常表示は軽量画像のままにし、拡大ビューを開いたときだけ高解像度版を取得する。
+    if (state.zoomImageUrl && state.zoomImageUrl !== source.src) {
+      const highResolution = new Image();
+      highResolution.decoding = "async";
+      highResolution.onload = () => {
+        if (!el("photo-zoom-modal").hidden && state.questionId === questionAtOpen) zoomImage.src = highResolution.src;
+      };
+      highResolution.onerror = () => { /* 軽量画像をそのまま使う */ };
+      highResolution.src = state.zoomImageUrl;
+    }
   }
 
   function closePhotoZoom() {
-    el("photo-zoom-dialog").hidden = true;
-    document.body.style.overflow = "";
-    zoomState.pointers.clear();
-    zoomState.pinchStart = null;
-    zoomState.dragStart = null;
-    el("zoom-photo-button").focus();
+    el("photo-zoom-modal").hidden = true;
+    document.body.classList.remove("photo-zoom-open");
+    zoomViewer.pointers.clear();
+    zoomViewer.dragStart = null;
+    el("photo-zoom-open").focus();
   }
 
-  el("zoom-photo-button").addEventListener("click", openPhotoZoom);
+  el("photo-zoom-open").addEventListener("click", openPhotoZoom);
   el("photo-zoom-close").addEventListener("click", closePhotoZoom);
-  el("photo-zoom-in").addEventListener("click", () => changePhotoZoom(1.25));
-  el("photo-zoom-out").addEventListener("click", () => changePhotoZoom(0.8));
-  el("photo-zoom-reset").addEventListener("click", resetPhotoZoom);
-  el("photo-zoom-dialog").addEventListener("click", (event) => { if (event.target === el("photo-zoom-dialog")) closePhotoZoom(); });
+  el("photo-zoom-reset").addEventListener("click", resetZoom);
+  el("photo-zoom-in").addEventListener("click", () => setZoomScale(zoomViewer.scale * 1.25));
+  el("photo-zoom-out").addEventListener("click", () => setZoomScale(zoomViewer.scale / 1.25));
+  el("photo-zoom-modal").addEventListener("click", (event) => {
+    if (event.target === el("photo-zoom-modal")) closePhotoZoom();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (el("photo-zoom-modal").hidden) return;
+    if (event.key === "Escape") closePhotoZoom();
+    if (event.key === "+" || event.key === "=") setZoomScale(zoomViewer.scale * 1.25);
+    if (event.key === "-") setZoomScale(zoomViewer.scale / 1.25);
+    if (event.key === "0") resetZoom();
+  });
+
   el("photo-zoom-viewport").addEventListener("wheel", (event) => {
     event.preventDefault();
-    changePhotoZoom(event.deltaY < 0 ? 1.12 : 0.89);
+    setZoomScale(zoomViewer.scale * (event.deltaY < 0 ? 1.15 : 1 / 1.15), event.clientX, event.clientY);
   }, { passive: false });
-  el("photo-zoom-viewport").addEventListener("pointerdown", (event) => {
-    const viewport = el("photo-zoom-viewport");
-    viewport.setPointerCapture(event.pointerId);
-    zoomState.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (zoomState.pointers.size === 1) {
-      zoomState.dragStart = { pointerX: event.clientX, pointerY: event.clientY, x: zoomState.x, y: zoomState.y };
-      viewport.classList.add("dragging");
-    } else if (zoomState.pointers.size === 2) {
-      const pts = [...zoomState.pointers.values()];
-      zoomState.pinchStart = { distance: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y), scale: zoomState.scale };
-      zoomState.dragStart = null;
+
+  const zoomViewport = el("photo-zoom-viewport");
+  zoomViewport.addEventListener("pointerdown", (event) => {
+    zoomViewport.setPointerCapture(event.pointerId);
+    zoomViewer.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (zoomViewer.pointers.size === 1) {
+      zoomViewer.dragStart = { pointerX: event.clientX, pointerY: event.clientY, x: zoomViewer.x, y: zoomViewer.y };
+    } else if (zoomViewer.pointers.size === 2) {
+      const points = [...zoomViewer.pointers.values()];
+      zoomViewer.pinchStart = { distance: Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y), scale: zoomViewer.scale };
+      zoomViewer.dragStart = null;
     }
   });
-  el("photo-zoom-viewport").addEventListener("pointermove", (event) => {
-    if (!zoomState.pointers.has(event.pointerId)) return;
-    zoomState.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    if (zoomState.pointers.size >= 2 && zoomState.pinchStart) {
-      const pts = [...zoomState.pointers.values()];
-      const distance = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
-      zoomState.scale = Math.max(1, Math.min(8, zoomState.pinchStart.scale * distance / Math.max(1, zoomState.pinchStart.distance)));
-      renderZoomTransform();
-    } else if (zoomState.dragStart && zoomState.scale > 1) {
-      zoomState.x = zoomState.dragStart.x + event.clientX - zoomState.dragStart.pointerX;
-      zoomState.y = zoomState.dragStart.y + event.clientY - zoomState.dragStart.pointerY;
-      renderZoomTransform();
+  zoomViewport.addEventListener("pointermove", (event) => {
+    if (!zoomViewer.pointers.has(event.pointerId)) return;
+    zoomViewer.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (zoomViewer.pointers.size >= 2 && zoomViewer.pinchStart) {
+      const points = [...zoomViewer.pointers.values()];
+      const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+      if (zoomViewer.pinchStart.distance > 0) setZoomScale(zoomViewer.pinchStart.scale * distance / zoomViewer.pinchStart.distance);
+    } else if (zoomViewer.pointers.size === 1 && zoomViewer.dragStart) {
+      zoomViewer.x = zoomViewer.dragStart.x + event.clientX - zoomViewer.dragStart.pointerX;
+      zoomViewer.y = zoomViewer.dragStart.y + event.clientY - zoomViewer.dragStart.pointerY;
+      applyZoomTransform();
     }
   });
   function finishZoomPointer(event) {
-    zoomState.pointers.delete(event.pointerId);
-    zoomState.pinchStart = null;
-    if (zoomState.pointers.size === 1) {
-      const [point] = zoomState.pointers.values();
-      zoomState.dragStart = { pointerX: point.x, pointerY: point.y, x: zoomState.x, y: zoomState.y };
+    zoomViewer.pointers.delete(event.pointerId);
+    zoomViewer.pinchStart = null;
+    if (zoomViewer.pointers.size === 1) {
+      const [point] = zoomViewer.pointers.values();
+      zoomViewer.dragStart = { pointerX: point.x, pointerY: point.y, x: zoomViewer.x, y: zoomViewer.y };
     } else {
-      zoomState.dragStart = null;
-      el("photo-zoom-viewport").classList.remove("dragging");
+      zoomViewer.dragStart = null;
     }
   }
-  el("photo-zoom-viewport").addEventListener("pointerup", finishZoomPointer);
-  el("photo-zoom-viewport").addEventListener("pointercancel", finishZoomPointer);
-  document.addEventListener("keydown", (event) => {
-    if (el("photo-zoom-dialog").hidden) return;
-    if (event.key === "Escape") closePhotoZoom();
-    else if (event.key === "+" || event.key === "=") changePhotoZoom(1.25);
-    else if (event.key === "-") changePhotoZoom(0.8);
-    else if (event.key === "0") resetPhotoZoom();
-  });
+  zoomViewport.addEventListener("pointerup", finishZoomPointer);
+  zoomViewport.addEventListener("pointercancel", finishZoomPointer);
 
   el("skip-button").addEventListener("click", skipQuestion);
   el("submit-answer").addEventListener("click", submitAnswer);

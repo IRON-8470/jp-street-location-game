@@ -51,17 +51,20 @@ function normalizeImage(image) {
   const coords = getCoordinates(image);
   // 体感速度を優先して1024px版を使い、利用できない場合だけ2048px版へフォールバック。
   const imageUrl = image.thumb_1024_url || image.thumb_2048_url;
+  const zoomImageUrl = image.thumb_2048_url || imageUrl;
   if (!coords || !image.id || !imageUrl) return null;
   let parsed;
-  try { parsed = new URL(imageUrl); } catch { return null; }
-  const trustedImageHost = parsed.hostname === "images.mapillary.com" || parsed.hostname.endsWith(".fbcdn.net") || parsed.hostname.endsWith(".fbsbx.com") || parsed.hostname.endsWith(".mapillary.com");
-  if (parsed.protocol !== "https:" || !trustedImageHost) return null;
+  let zoomParsed;
+  try { parsed = new URL(imageUrl); zoomParsed = new URL(zoomImageUrl); } catch { return null; }
+  const isTrustedImageHost = (url) => url.hostname === "images.mapillary.com" || url.hostname.endsWith(".fbcdn.net") || url.hostname.endsWith(".fbsbx.com") || url.hostname.endsWith(".mapillary.com");
+  if (parsed.protocol !== "https:" || !isTrustedImageHost(parsed) || zoomParsed.protocol !== "https:" || !isTrustedImageHost(zoomParsed)) return null;
   if (image.camera_type === "spherical") return null;
 
   const creator = image.creator && typeof image.creator === "object" ? image.creator : {};
   return {
     imageId: String(image.id),
     imageUrl: parsed.toString(),
+    zoomImageUrl: zoomParsed.toString(),
     sourceUrl: `${SOURCE_BASE}${encodeURIComponent(String(image.id))}`,
     creatorId: creator.id ? String(creator.id) : null,
     creatorUsername: typeof creator.username === "string" ? creator.username : "撮影者情報なし",
@@ -191,7 +194,7 @@ async function handleQuestion(env) {
     ).run();
 
     // 正解座標・画像ID・撮影者情報は回答/スキップ前にブラウザーへ返さない。
-    return json({ questionId, imageUrl: chosen.imageUrl });
+    return json({ questionId, imageUrl: chosen.imageUrl, zoomImageUrl: chosen.zoomImageUrl });
   } catch (error) {
     return json({ error: `問題の準備に失敗しました: ${error.message || "不明なエラー"}` }, 500);
   }

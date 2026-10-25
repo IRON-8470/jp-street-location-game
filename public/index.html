@@ -51,7 +51,7 @@
           </div>
           <div class="photo-caption"><span class="caption-dot"></span> 実際に撮影された静止画を使用</div>
           <div class="photo-actions">
-            <button id="zoom-photo-button" class="button button-secondary" type="button" disabled>写真を拡大</button>
+            <button id="photo-zoom-open" class="button button-secondary" type="button" disabled>写真を拡大</button>
             <button id="skip-button" class="button button-secondary" type="button" disabled>スキップ <span aria-hidden="true">→</span></button>
             <span class="skip-note">難しすぎる問題は、いつでもスキップできます。</span>
           </div>
@@ -115,26 +115,28 @@
         </article>
       </aside>
     </section>
+    <div id="photo-zoom-modal" class="photo-zoom-modal" hidden role="dialog" aria-modal="true" aria-label="写真の拡大表示">
+      <div class="photo-zoom-dialog">
+        <div class="photo-zoom-toolbar">
+          <span class="photo-zoom-title">写真を拡大</span>
+          <div class="photo-zoom-controls">
+            <button id="photo-zoom-out" type="button" aria-label="縮小">−</button>
+            <button id="photo-zoom-reset" type="button">リセット</button>
+            <button id="photo-zoom-in" type="button" aria-label="拡大">＋</button>
+            <button id="photo-zoom-close" type="button" aria-label="閉じる">閉じる ✕</button>
+          </div>
+        </div>
+        <div id="photo-zoom-viewport" class="photo-zoom-viewport" tabindex="0" aria-label="写真。マウスホイールまたはピンチで拡大縮小、ドラッグで移動できます。">
+          <img id="photo-zoom-image" alt="拡大表示中の街角の写真" draggable="false">
+        </div>
+        <p class="photo-zoom-help">ホイール／ピンチ：拡大・縮小　ドラッグ：移動　Esc：閉じる</p>
+      </div>
+    </div>
     <footer class="site-footer">
       <p class="footer-brand">街角特定 — 初版プロトタイプ · 写真データ提供：<a href="https://www.mapillary.com/" target="_blank" rel="noopener noreferrer"><img src="https://upload.wikimedia.org/wikipedia/commons/a/a3/Mapillary_logo.svg" alt="Mapillary logo">Mapillary</a></p>
       <p>地図データ © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap contributors</a></p>
     </footer>
   </main>
-
-  <div id="photo-zoom-dialog" class="photo-zoom-dialog" hidden role="dialog" aria-modal="true" aria-label="写真の拡大表示">
-    <div class="photo-zoom-toolbar">
-      <span>写真を拡大表示 <small>ホイールで拡大・縮小、ドラッグで移動</small></span>
-      <div class="photo-zoom-controls">
-        <button id="photo-zoom-out" type="button" aria-label="縮小">−</button>
-        <button id="photo-zoom-in" type="button" aria-label="拡大">＋</button>
-        <button id="photo-zoom-reset" type="button">リセット</button>
-        <button id="photo-zoom-close" type="button" aria-label="閉じる">閉じる ✕</button>
-      </div>
-    </div>
-    <div id="photo-zoom-viewport" class="photo-zoom-viewport" tabindex="0">
-      <img id="photo-zoom-image" alt="拡大表示中の出題写真" draggable="false">
-    </div>
-  </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="/app.js?v=3" defer></script>
