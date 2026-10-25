@@ -2,6 +2,9 @@ const GRAPH_API = "https://graph.mapillary.com/images";
 const SOURCE_BASE = "https://www.mapillary.com/app/?pKey=";
 const LICENSE_URL = "https://creativecommons.org/licenses/by-sa/4.0/";
 const ACCEPTANCE_RADIUS_METERS = 15;
+// Mapillaryの実験的な画質スコア。正のスコアがこの値未満の画像は出題候補から除外する。
+// スコアが0またはnullの画像は未評価として扱い、候補不足を防ぐため除外しない。
+const MIN_QUALITY_SCORE = 0.45;
 
 // 初版では、日本各地の市街地周辺を小さな bbox 単位で検索する。
 // 密度が地域により異なるため、出題時には複数回サンプリングする。
@@ -49,10 +52,22 @@ function getCoordinates(image) {
 
 function normalizeImage(image) {
   const coords = getCoordinates(image);
-  // 体感速度を優先して1024px版を使い、利用できない場合だけ2048px版へフォールバック。
+  // 通常表示は高速な1024px版を優先する。
   const imageUrl = image.thumb_1024_url || image.thumb_2048_url;
-  const zoomImageUrl = image.thumb_2048_url || imageUrl;
+  // 拡大時は元画像相当のサムネイルを優先し、未提供なら2048px版へフォールバック。
+  const zoomImageUrl = image.thumb_original_url || image.thumb_2048_url || imageUrl;
   if (!coords || !image.id || !imageUrl) return null;
+
+  // quality_score は0/nullの場合、Mapillary側で未評価の可能性がある。
+  // 既知の低画質（スコアが正の値で0.45未満）のみ除外する。
+  const rawQualityScore = image.quality_score;
+  const numericQualityScore = rawQualityScore === null || rawQualityScore === undefined || rawQualityScore === ""
+    ? null
+    : Number(rawQualityScore);
+  const qualityScore = Number.isFinite(numericQualityScore) && numericQualityScore > 0
+    ? numericQualityScore
+    : null;
+  if (qualityScore !== null && qualityScore < MIN_QUALITY_SCORE) return null;
   let parsed;
   let zoomParsed;
   try { parsed = new URL(imageUrl); zoomParsed = new URL(zoomImageUrl); } catch { return null; }
@@ -85,7 +100,7 @@ async function fetchImagesInArea(env, lat, lon) {
   const halfLon = 0.023;
   const bbox = [centerLon - halfLon, centerLat - halfLat, centerLon + halfLon, centerLat + halfLat].join(",");
   const url = new URL(GRAPH_API);
-  url.searchParams.set("fields", "id,thumb_2048_url,thumb_1024_url,computed_geometry,geometry,captured_at,creator,sequence,camera_type");
+  url.searchParams.set("fields", "id,thumb_1024_url,thumb_2048_url,thumb_original_url,quality_score,computed_geometry,geometry,captured_at,creator,sequence,camera_type");
   url.searchParams.set("bbox", bbox);
   url.searchParams.set("limit", "100");
   const response = await fetch(url, {
