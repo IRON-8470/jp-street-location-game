@@ -502,6 +502,10 @@
     el("photo-zoom-open").focus();
   }
 
+  // ブラウザー標準の画像ドラッグを無効化し、ビューアー内のドラッグをパン操作に統一する。
+  el("photo-zoom-image").addEventListener("dragstart", (event) => event.preventDefault());
+  el("photo-zoom-viewport").addEventListener("dragstart", (event) => event.preventDefault());
+
   el("photo-zoom-open").addEventListener("click", openPhotoZoom);
   el("photo-zoom-close").addEventListener("click", closePhotoZoom);
   el("photo-zoom-reset").addEventListener("click", resetZoom);
@@ -525,7 +529,9 @@
 
   const zoomViewport = el("photo-zoom-viewport");
   zoomViewport.addEventListener("pointerdown", (event) => {
-    zoomViewport.setPointerCapture(event.pointerId);
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    try { zoomViewport.setPointerCapture(event.pointerId); } catch { /* captureが利用できない環境では通常のpointerイベントで続行 */ }
     zoomViewer.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (zoomViewer.pointers.size === 1) {
       zoomViewer.dragStart = { pointerX: event.clientX, pointerY: event.clientY, x: zoomViewer.x, y: zoomViewer.y };
@@ -537,6 +543,7 @@
   });
   zoomViewport.addEventListener("pointermove", (event) => {
     if (!zoomViewer.pointers.has(event.pointerId)) return;
+    event.preventDefault();
     zoomViewer.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (zoomViewer.pointers.size >= 2 && zoomViewer.pinchStart) {
       const points = [...zoomViewer.pointers.values()];

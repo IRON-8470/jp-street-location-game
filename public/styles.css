@@ -13,6 +13,8 @@
   --shadow: 0 8px 28px rgba(21, 49, 78, .06);
 }
 * { box-sizing: border-box; }
+/* display指定のある要素でもhidden属性を確実に優先する */
+[hidden] { display: none !important; }
 html { background: var(--canvas); }
 body { margin: 0; color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif; line-height: 1.6; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -45,8 +47,8 @@ h1 { margin: 0; font-size: clamp(25px, 3vw, 36px); letter-spacing: -.035em; line
 .panel-heading h2, .guide-panel h2, .result-panel h2, .session-panel h2 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.015em; }
 .status-chip { padding: 5px 9px; border-radius: 99px; background: #eef3f7; color: #60758a; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .photo-frame { position: relative; min-height: 320px; max-height: 530px; height: clamp(320px, 38vw, 500px); overflow: hidden; display: grid; place-items: center; border-radius: 11px; background: #e9eff4; }
-.photo-frame img { display: block; width: 100%; height: 100%; object-fit: contain; background: #e9eff4; }
-.photo-placeholder { display: flex; flex-direction: column; align-items: center; gap: 7px; padding: 24px; text-align: center; color: #74879a; }
+.photo-frame img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; object-position: center center; background: #e9eff4; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+.photo-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; padding: 24px; text-align: center; color: #74879a; }
 .placeholder-symbol { font-size: 42px; line-height: 1; color: #9cafbf; }
 .photo-placeholder strong { color: #49647d; font-size: 14px; }
 .photo-placeholder span { max-width: 290px; font-size: 11px; }
@@ -170,8 +172,8 @@ h1 { margin: 0; font-size: clamp(25px, 3vw, 36px); letter-spacing: -.035em; line
 .photo-zoom-controls button { min-width: 38px; min-height: 36px; padding: 6px 10px; border: 1px solid #53687b; border-radius: 7px; background: #243b50; color: #fff; cursor: pointer; font: inherit; }
 .photo-zoom-controls button:hover { background: #34536d; }
 .photo-zoom-viewport { position: relative; flex: 1; min-height: 0; overflow: hidden; display: grid; place-items: center; background: #050b11; touch-action: none; cursor: grab; outline: none; }
-.photo-zoom-viewport:active { cursor: grabbing; }
-.photo-zoom-viewport img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; user-select: none; -webkit-user-drag: none; transform-origin: center center; will-change: transform; pointer-events: none; }
+.photo-zoom-viewport:active, .photo-zoom-viewport img:active { cursor: grabbing; }
+.photo-zoom-viewport img { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; transform-origin: center center; will-change: transform; pointer-events: auto; cursor: grab; }
 .photo-zoom-help { margin: 0; padding: 8px 12px; color: #cbd5e1; font-size: 12px; text-align: center; }
 @media (max-width: 600px) {
   .photo-zoom-modal { padding: 0; }
