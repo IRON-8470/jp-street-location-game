@@ -346,12 +346,16 @@
     button.disabled = true;
     el("skip-button").disabled = true;
     button.textContent = "判定中…";
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
       const result = await api("/api/answer", {
         method: "POST",
+        signal: controller.signal,
         body: JSON.stringify({ questionId: state.questionId, latitude: state.answer.latitude, longitude: state.answer.longitude })
       });
       state.phase = "answered";
+      button.textContent = "判定完了";
       state.result = result;
       state.stats.answered += 1;
       if (result.isCorrect) state.stats.correct += 1;
@@ -371,13 +375,23 @@
       el("next-button").textContent = "次の問題へ →";
       setNotice("");
     } catch (error) {
-      setNotice(error.message, "error");
+      const message = error && error.name === "AbortError"
+        ? "判定サーバーから30秒以内に応答がありませんでした。通信状態を確認し、必要ならページを再読み込みしてください。"
+        : (error.message || "判定中に予期しないエラーが発生しました。");
+      setNotice(message, "error");
       if (state.phase === "active") {
         button.disabled = false;
         el("skip-button").disabled = false;
+        button.textContent = "この地点で回答する ↗";
+      } else if (state.phase === "answered") {
+        // 判定後の画面更新でエラーが発生しても「判定中…」を残さない。
+        button.textContent = "判定完了";
       }
     } finally {
-      if (state.phase === "active") button.textContent = "この地点で回答する ↗";
+      clearTimeout(timeoutId);
+      if (state.phase === "active" && button.textContent === "判定中…") {
+        button.textContent = "この地点で回答する ↗";
+      }
     }
   }
 
