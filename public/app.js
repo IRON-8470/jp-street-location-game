@@ -342,20 +342,35 @@
 
   async function submitAnswer() {
     if (state.phase !== "active" || !state.questionId || !state.answer) return;
+
     const button = el("submit-answer");
     button.disabled = true;
     el("skip-button").disabled = true;
     button.textContent = "判定中…";
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    let timeoutId = null;
+    // AbortControllerだけでは応答待ちが解消されない状況にも備え、Promise自体に期限を設ける。
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        const timeoutError = new Error("判定サーバーから15秒以内に応答がありませんでした。通信状態を確認して、もう一度お試しください。");
+        timeoutError.name = "TimeoutError";
+        reject(timeoutError);
+      }, 15000);
+    });
+
     try {
-      const result = await api("/api/answer", {
-        method: "POST",
-        signal: controller.signal,
-        body: JSON.stringify({ questionId: state.questionId, latitude: state.answer.latitude, longitude: state.answer.longitude })
-      });
+      const result = await Promise.race([
+        api("/api/answer", {
+          method: "POST",
+          signal: controller.signal,
+          body: JSON.stringify({ questionId: state.questionId, latitude: state.answer.latitude, longitude: state.answer.longitude })
+        }),
+        timeoutPromise
+      ]);
+
       state.phase = "answered";
-      button.textContent = "判定完了";
       state.result = result;
       state.stats.answered += 1;
       if (result.isCorrect) state.stats.correct += 1;
@@ -375,23 +390,18 @@
       el("next-button").textContent = "次の問題へ →";
       setNotice("");
     } catch (error) {
-      const message = error && error.name === "AbortError"
-        ? "判定サーバーから30秒以内に応答がありませんでした。通信状態を確認し、必要ならページを再読み込みしてください。"
+      const message = error && (error.name === "AbortError" || error.name === "TimeoutError")
+        ? (error.message || "判定サーバーから15秒以内に応答がありませんでした。通信状態を確認して、もう一度お試しください。")
         : (error.message || "判定中に予期しないエラーが発生しました。");
       setNotice(message, "error");
-      if (state.phase === "active") {
-        button.disabled = false;
-        el("skip-button").disabled = false;
-        button.textContent = "この地点で回答する ↗";
-      } else if (state.phase === "answered") {
-        // 判定後の画面更新でエラーが発生しても「判定中…」を残さない。
-        button.textContent = "判定完了";
-      }
     } finally {
-      clearTimeout(timeoutId);
-      if (state.phase === "active" && button.textContent === "判定中…") {
-        button.textContent = "この地点で回答する ↗";
-      }
+      if (timeoutId !== null) clearTimeout(timeoutId);
+
+      // 成功・失敗・画面更新中の例外を問わず、判定中の表示を必ず解除する。
+      // さらに、元のボタン文言に戻してから、現在の問題状態に応じて操作可否を設定する。
+      button.textContent = "この地点で回答する ↗";
+      button.disabled = state.phase !== "active" || !state.answer;
+      el("skip-button").disabled = state.phase !== "active";
     }
   }
 
